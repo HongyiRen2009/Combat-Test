@@ -1,0 +1,980 @@
+<body oncontextmenu="return false;" style="overflow: hidden">
+  <canvas></canvas>
+  <div class="bar">
+    <div class="powerBar" id="bluePowerBar" style="background-color: blue">
+      <p class="armyPowerText" id="blueArmyPowerText">100</p>
+    </div>
+    <div class="powerBar" id="redPowerBar" style="background-color: red">
+      <p class="armyPowerText" id="redArmyPowerText">100</p>
+    </div>
+  </div>
+  <style>
+    .armyPowerText {
+      color: white;
+      position: absolute;
+	  bottom:100%;
+	  transform: translate(0%,100%);
+      margin: 0px;
+	  width:100%;
+	  height:100%;
+	  font-size:2vh;
+	  padding-top:0px;
+      z-index: 2;
+    }
+    .powerBar {
+      position: absolute;
+      margin: 0px;
+      border-radius: 40px;
+      width: 100%;
+      height: 100%;
+      background-color: blue;
+    }
+    .bar {
+      position: absolute;
+      top: 5%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 3px solid black;
+      border-radius: 40px;
+      width: 80%;
+      height: 2%;
+    }
+  </style>
+  <script>
+    class army {
+      constructor(x, y, power, type, side) {
+        this.power = power;
+        this.x = x;
+        this.y = y;
+        this.direction = 0;
+        this.destination = [];
+        this.speed = 5 + (type == "C" ? 7 : 0) + (type == "I" ? 2 : 0);
+        this.selected = false;
+        this.animationTime = -6;
+        this.target = null;
+        this.arrowCoolDown = 0;
+        this.type = type;
+        this.targetRotation = 0;
+        this.side = side;
+        this.priority = 3;
+        this.calveryStun = 0;
+        if (side == "red") {
+          redTotalPower += power;
+        } else {
+          blueTotalPower += power;
+        }
+      }
+      getDistance(x, y) {
+        return Math.hypot(this.x - x, this.y - y);
+      }
+    }
+    class arrow {
+      constructor(x, y, direction, damage, landingSpot, side) {
+        this.x = x;
+        this.y = y;
+        this.damage = damage;
+        this.direction = direction;
+        this.landingSpot = landingSpot;
+        this.startPos = { x, y };
+        this.ticks = 0;
+        this.side = side;
+      }
+    }
+    let armyChosen = null;
+    let armiesChosen = [];
+    let startingPlace = {};
+    const redArmies = [];
+    const blueArmies = [];
+    const arrows = [];
+    let mousePos = { x: 0, y: 0 };
+    let startingScroll = {};
+    let rotationAmount = 0;
+    let armyScrollX = 0;
+    let armyScrollY = 0;
+    let drawingLine = false;
+    let tightnessX = 0;
+    let tightnessY = 0;
+    const startDistance = 5000;
+    let zoom = 1;
+    let drawingRectangle = false;
+    const gridArmies = {};
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    canvas.width = screen.width;
+    canvas.height = screen.availHeight;
+    let isSelecting = false;
+    let redTotalPower = 0;
+    let blueTotalPower = 0;
+    let redPower = 0;
+    let bluePower = 0;
+    for (let i = 1000; i < 2000; i += 25) {
+      redArmies.push(new army(startDistance - 100, i, 1000, "I", "red"));
+      redArmies.push(new army(startDistance - 50, i, 1000, "I", "red"));
+      redArmies.push(new army(startDistance - 150, i, 1000, "I", "red"));
+      redArmies.push(new army(startDistance - 200, i, 1000, "I", "red"));
+      redArmies.push(new army(startDistance - 250, i, 1000, "I", "red"));
+      redArmies.push(new army(startDistance, i, 100, "A", "red"));
+      blueArmies.push(new army(100, i, 1000, "I", "blue"));
+      blueArmies.push(new army(0, i, 1000, "A", "blue"));
+      redArmies.push(new army(startDistance - 150, i, 1000, "I", "red"));
+      redArmies.push(new army(startDistance + 50, i, 1000, "A", "red"));
+      blueArmies.push(new army(150, i, 1000, "I", "blue"));
+      blueArmies.push(new army(50, i, 1000, "A", "blue"));
+    }
+    for (let i = 2650; i < 3000; i += 50) {
+      for (let j = 150; j < 500; j += 50) {
+        redArmies.push(new army(startDistance - j, i, 1000, "C", "red"));
+        blueArmies.push(new army(j, i, 1000, "C", "blue"));
+      }
+    }
+    debugger;
+    redPower = redTotalPower;
+    bluePower = blueTotalPower;
+    updateArmyPowerBars();
+    function updateArmyPowerBars() {
+      redPower = 0;
+      bluePower = 0;
+      for (const ar of blueArmies) {
+        bluePower += ar.power;
+      }
+      for (const ar of redArmies) {
+        redPower += ar.power;
+      }
+      document.getElementById(
+        "bluePowerBar"
+      ).style.clipPath = `polygon(0% 0%, 0% 100%, ${
+        (bluePower / (redPower + bluePower)) * 100
+      }% 100%, ${(bluePower / (redPower + bluePower)) * 100}% 0%)`;
+      document.getElementById(
+        "redPowerBar"
+      ).style.clipPath = `polygon(100% 0%, 100% 100%, ${
+        100 - (redPower / (redPower + bluePower)) * 100
+      }% 100%, ${100 - (redPower / (redPower + bluePower)) * 100}% 0%)`;
+      document.getElementById("blueArmyPowerText").style.left =
+        (bluePower / (redPower + bluePower) / 2) * 100 + "%";
+      document.getElementById("redArmyPowerText").style.left =
+        100 - (redPower / (redPower + bluePower)) * 50 + "%";
+      document.getElementById("redArmyPowerText").innerHTML = shorten(redPower);
+      document.getElementById("blueArmyPowerText").innerHTML =
+        shorten(bluePower);
+    }
+    canvas.onmousedown = function (event) {
+      if (!isSelecting) {
+        rotationAmount = 0;
+        tightnessX = 1;
+        tightnessY = 1;
+      }
+      mousePos = { x: event.clientX, y: event.clientY };
+
+      if (event.button == 0) {
+        for (let i = 0; i < blueArmies.length; i++) {
+          if (
+            blueArmies[i].getDistance(
+              mousePos.x / zoom + armyScrollX,
+              mousePos.y / zoom + armyScrollY
+            ) <
+            20 / zoom
+          ) {
+            if (armiesChosen.length == 0) armiesChosen.push(i);
+            armyChosen = i;
+            drawingLine = true;
+            isSelecting = true;
+            startingPlace = {
+              x: mousePos.x,
+              y: mousePos.y,
+            };
+            startingScroll = { x: armyScrollX, y: armyScrollY };
+            break;
+          }
+        }
+      } else {
+        armyChosen = null;
+        drawingLine = false;
+        drawingRectangle = true;
+        isSelecting = true;
+        startingPlace = {
+          x: mousePos.x,
+          y: mousePos.y,
+        };
+        startingScroll = { x: armyScrollX, y: armyScrollY };
+      }
+    };
+    canvas.onmousemove = function (event) {
+      mousePos = { x: event.clientX, y: event.clientY };
+      renderArmyUI();
+    };
+    function shorten(number) {
+      if (number.toString().includes("e")) {
+        return number;
+      }
+      let numlength = Math.floor(
+        JSON.stringify(Math.floor(Math.abs(number) / 10)).length / 3
+      );
+      let returnnum = number / 10 ** (numlength * 3);
+      let endsymbol = "";
+      switch (numlength) {
+        case 0:
+          break;
+        case 1:
+          endsymbol = "k";
+          break;
+        case 2:
+          endsymbol = "m";
+          break;
+        case 3:
+          endsymbol = "b";
+          break;
+        case 4:
+          endsymbol = "t";
+          break;
+        case 5:
+          endsymbol = "Qa";
+          break;
+        case 6:
+          endsymbol = "Qi";
+          break;
+        case 7:
+          endsymbol = "Sx";
+          break;
+      }
+
+      returnnum = returnnum.toFixed(2);
+
+      while (
+        returnnum.includes(".") &&
+        returnnum[returnnum.length - 1] === "0"
+      ) {
+        returnnum = returnnum.slice(0, returnnum.length - 1);
+      }
+      if (returnnum[returnnum.length - 1] == ".") {
+        returnnum = returnnum.slice(0, returnnum.length - 1);
+      }
+      return returnnum + endsymbol;
+    }
+    function renderArmyUI() {
+      render();
+      if (isSelecting) {
+        if (drawingRectangle) {
+          ctx.beginPath();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "black";
+          debugger;
+          ctx.rect(
+            startingPlace.x + (startingScroll.x - armyScrollX) * zoom,
+            startingPlace.y + (startingScroll.y - armyScrollY) * zoom,
+            mousePos.x -
+              startingPlace.x -
+              (startingScroll.x - armyScrollX) * zoom,
+            mousePos.y -
+              startingPlace.y -
+              (startingScroll.y - armyScrollY) * zoom
+          );
+          ctx.stroke();
+        } else if (drawingLine) {
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 2;
+          debugger;
+          ctx.beginPath();
+          ctx.moveTo(
+            (blueArmies[armyChosen].x - armyScrollX) * zoom,
+            (blueArmies[armyChosen].y - armyScrollY) * zoom
+          );
+          ctx.lineTo(mousePos.x, mousePos.y);
+          ctx.stroke();
+
+          for (const a of armiesChosen) {
+            const armyDirection = Math.atan2(
+              blueArmies[armyChosen].y - blueArmies[a].y,
+              blueArmies[armyChosen].x - blueArmies[a].x
+            );
+            switch (blueArmies[a].type) {
+              case "I":
+                drawDirectionalRectangle(
+                  mousePos.x -
+                    Math.cos(armyDirection + (Math.PI / 12) * rotationAmount) *
+                      blueArmies[a].getDistance(
+                        blueArmies[armyChosen].x,
+                        blueArmies[armyChosen].y
+                      ) *
+                      tightnessX *
+                      zoom,
+
+                  mousePos.y -
+                    Math.sin(armyDirection + (Math.PI / 12) * rotationAmount) *
+                      blueArmies[a].getDistance(
+                        blueArmies[armyChosen].x,
+                        blueArmies[armyChosen].y
+                      ) *
+                      tightnessY *
+                      zoom,
+                  ((blueArmies[a].direction + (Math.PI / 12) * rotationAmount) *
+                    180) /
+                    Math.PI,
+                  "rgba(0,0,255,0.5)",
+                  12 * zoom,
+                  "black",
+                  2 * zoom
+                );
+
+                break;
+              case "C":
+                drawDirectionalTriangle(
+                  mousePos.x -
+                    Math.cos(armyDirection + (Math.PI / 12) * rotationAmount) *
+                      blueArmies[a].getDistance(
+                        blueArmies[armyChosen].x,
+                        blueArmies[armyChosen].y
+                      ) *
+                      tightnessX *
+                      zoom,
+
+                  mousePos.y -
+                    Math.sin(armyDirection + (Math.PI / 12) * rotationAmount) *
+                      blueArmies[a].getDistance(
+                        blueArmies[armyChosen].x,
+                        blueArmies[armyChosen].y
+                      ) *
+                      tightnessY *
+                      zoom,
+                  ((blueArmies[a].direction + (Math.PI / 12) * rotationAmount) *
+                    180) /
+                    Math.PI,
+                  "rgba(0,0,255,0.5)",
+                  12 * zoom,
+                  "black",
+                  2 * zoom
+                );
+
+                break;
+              case "A":
+                ctx.lineWidth = 2 * zoom;
+                ctx.fillStyle = "rgba(0,0,255,0.5)";
+                ctx.beginPath();
+
+                ctx.arc(
+                  mousePos.x -
+                    Math.cos(armyDirection + (Math.PI / 12) * rotationAmount) *
+                      blueArmies[a].getDistance(
+                        blueArmies[armyChosen].x,
+                        blueArmies[armyChosen].y
+                      ) *
+                      tightnessX *
+                      zoom,
+
+                  mousePos.y -
+                    Math.sin(armyDirection + (Math.PI / 12) * rotationAmount) *
+                      blueArmies[a].getDistance(
+                        blueArmies[armyChosen].x,
+                        blueArmies[armyChosen].y
+                      ) *
+                      tightnessY *
+                      zoom,
+                  10 * zoom,
+                  0,
+                  Math.PI * 2
+                );
+                ctx.stroke();
+                ctx.fill();
+                break;
+            }
+          }
+        }
+      }
+    }
+
+    function drawDirectionalRectangle(
+      x,
+      y,
+      direction,
+      color,
+      size = 15,
+      lineColor = "black",
+      lineWidth = 5 * zoom
+    ) {
+      ctx.beginPath();
+      let currentD = 45 + direction;
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = lineColor;
+
+      ctx.fillStyle = color;
+      ctx.moveTo(
+        x + Math.cos((currentD * Math.PI) / 180) * size,
+        y + Math.sin((currentD * Math.PI) / 180) * size
+      );
+      for (let i = 0; i < 4; i++) {
+        currentD += 90;
+        ctx.lineTo(
+          x + Math.cos((currentD * Math.PI) / 180) * size,
+          y + Math.sin((currentD * Math.PI) / 180) * size
+        );
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+    }
+    function drawDirectionalTriangle(
+      x,
+      y,
+      direction,
+      color,
+      size = 15,
+      lineColor = "black",
+      lineWidth = 5 * zoom
+    ) {
+      ctx.beginPath();
+      let currentD = direction;
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = lineColor;
+
+      ctx.fillStyle = color;
+      ctx.moveTo(
+        x + Math.cos((currentD * Math.PI) / 180) * size,
+        y + Math.sin((currentD * Math.PI) / 180) * size
+      );
+      for (let i = 0; i < 3; i++) {
+        currentD += 120;
+        ctx.lineTo(
+          x + Math.cos((currentD * Math.PI) / 180) * size,
+          y + Math.sin((currentD * Math.PI) / 180) * size
+        );
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+    }
+    document.onwheel = function (event) {
+      debugger;
+      zoom -= 0.05 * Math.sign(event.deltaY);
+      zoom = Math.min(10, Math.max(0.1, zoom));
+      renderArmyUI();
+    };
+    document.onkeydown = function (event) {
+      switch (event.key) {
+        case "w":
+          armyScrollY -= 20;
+          renderArmyUI();
+          break;
+        case "s":
+          armyScrollY += 20;
+          renderArmyUI();
+          break;
+        case "a":
+          armyScrollX -= 20;
+          renderArmyUI();
+          break;
+        case "d":
+          armyScrollX += 20;
+          renderArmyUI();
+          break;
+        case "q":
+          rotationAmount--;
+          renderArmyUI();
+          break;
+        case "e":
+          rotationAmount++;
+          renderArmyUI();
+          break;
+        case "z":
+          tightnessY += 0.1;
+          renderArmyUI();
+          break;
+        case "c":
+          tightnessY -= 0.1;
+          renderArmyUI();
+          break;
+        case "Z":
+          tightnessX += 0.1;
+          renderArmyUI();
+          break;
+        case "C":
+          tightnessX -= 0.1;
+          renderArmyUI();
+          break;
+        case "-":
+          zoom -= 0.1;
+          zoom = Math.max(0.1, zoom);
+          break;
+        case "=":
+          zoom += 0.1;
+          zoom = Math.min(10, zoom);
+          break;
+      }
+    };
+    canvas.onmouseup = function (event) {
+      if (drawingRectangle) {
+        for (let i = 0; i < blueArmies.length; i++) {
+          if (
+            blueArmies[i].x >
+              Math.min(
+                startingPlace.x / zoom + startingScroll.x,
+                mousePos.x / zoom + armyScrollX
+              ) &&
+            blueArmies[i].x <
+              Math.max(
+                startingPlace.x / zoom + startingScroll.x,
+                mousePos.x / zoom + armyScrollX
+              ) &&
+            blueArmies[i].y >
+              Math.min(
+                startingPlace.y / zoom + startingScroll.y,
+                mousePos.y / zoom + armyScrollY
+              ) &&
+            blueArmies[i].y <
+              Math.max(
+                startingPlace.y / zoom + startingScroll.y,
+                mousePos.y / zoom + armyScrollY
+              )
+          ) {
+            armiesChosen.push(i);
+            blueArmies[i].selected = true;
+          }
+        }
+        if (armiesChosen.length > 0) {
+          drawingRectangle = false;
+          return;
+        }
+      } else if (armyChosen != null) {
+        for (const a of armiesChosen) {
+          const armyDirection = Math.atan2(
+            blueArmies[armyChosen].y - blueArmies[a].y,
+            blueArmies[armyChosen].x - blueArmies[a].x
+          );
+          blueArmies[a].destination.length = 0;
+          if (blueArmies[a].priority <= 2) {
+            blueArmies[a].priority = 1;
+          }
+          blueArmies[a].destination.push({
+            x:
+              armyScrollX +
+              mousePos.x / zoom -
+              Math.cos(armyDirection + (Math.PI / 12) * rotationAmount) *
+                blueArmies[a].getDistance(
+                  blueArmies[armyChosen].x,
+                  blueArmies[armyChosen].y
+                ) *
+                tightnessX,
+
+            y:
+              armyScrollY +
+              mousePos.y / zoom -
+              Math.sin(armyDirection + (Math.PI / 12) * rotationAmount) *
+                blueArmies[a].getDistance(
+                  blueArmies[armyChosen].x,
+                  blueArmies[armyChosen].y
+                ) *
+                tightnessY,
+          });
+          blueArmies[a].targetRotation =
+            blueArmies[a].direction + (Math.PI / 12) * rotationAmount;
+          blueArmies[a].selected = false;
+        }
+        isSelecting = false;
+        armiesChosen.length = 0;
+      }
+      drawingRectangle = false;
+    };
+    function distance(x1, y1, x2, y2) {
+      return Math.hypot(x2 - x1, y2 - y1);
+    }
+    function mainFunction() {
+      if (!isSelecting) {
+        Object.keys(gridArmies).forEach((key) => delete gridArmies[key]);
+
+        for (const a of redArmies) {
+          const posString = Math.floor(a.x / 30) + "/" + Math.floor(a.y / 30);
+          if (gridArmies[posString] == undefined) {
+            gridArmies[posString] = [a];
+          } else {
+            gridArmies[posString].push(a);
+          }
+        }
+        for (const a of blueArmies) {
+          const posString = Math.floor(a.x / 30) + "/" + Math.floor(a.y / 30);
+          if (gridArmies[posString] == undefined) {
+            gridArmies[posString] = [a];
+          } else {
+            gridArmies[posString].push(a);
+          }
+        }
+        for (let i = arrows.length - 1; i >= 0; i--) {
+          const arrow = arrows[i];
+
+          arrows[i].x += Math.cos(arrow.direction) * 30;
+          arrows[i].y += Math.sin(arrow.direction) * 30;
+          const posArray =
+            gridArmies[
+              Math.floor(arrow.x / 30) + "/" + Math.floor(arrow.y / 30)
+            ];
+          arrows[i].ticks++;
+
+          if (arrow.ticks > 30) {
+            arrows.splice(i, 1);
+          }
+          if (posArray == undefined) {
+            continue;
+          }
+          for (const a of posArray) {
+            if (a.side == arrow.side) {
+              continue;
+            }
+            a.power -=
+              arrow.damage +
+              (Math.abs(a.direction - arrow.direction) < Math.PI / 2 ||
+              a.type == "A"
+                ? 1
+                : 0.25);
+            updateArmyPowerBars();
+            arrows.splice(i, 1);
+            continue;
+          }
+        }
+        for (const a of redArmies) {
+          if (a.type != "C" || a.calveryStun == 0) {
+            if (a.animationTime == -6) {
+              a.destination.length = 0;
+              let min = Infinity;
+              let leastCoord;
+              let arrowTarget = null;
+              for (const a2 of blueArmies) {
+                const nearestDistance = a.getDistance(a2.x, a2.y);
+                if (nearestDistance < min) {
+                  min = nearestDistance;
+                  leastCoord = { x: a2.x, y: a2.y };
+                  arrowTarget = a2;
+                  if (a.getDistance(a2.x, a2.y) < 30) {
+                    a.destination.splice(0, 1);
+                    a.animationTime = 1;
+                    a.target = a2;
+                    break;
+                  }
+                }
+              }
+              if (a.type == "I" || a.type == "C" || min > 500) {
+                a.destination.push(leastCoord);
+              } else if (a.arrowCoolDown <= 0) {
+                arrows.push(
+                  new arrow(
+                    a.x,
+                    a.y,
+                    Math.atan2(leastCoord.y - a.y, leastCoord.x - a.x),
+                    Math.ceil(a.power / 10) + (a.power % 10),
+                    leastCoord,
+                    "red"
+                  )
+                );
+                a.arrowCoolDown = 15 + Math.random() * 5;
+              } else {
+                a.arrowCoolDown--;
+              }
+
+              if (a.destination.length > 0) {
+                a.direction = Math.atan2(
+                  a.destination[0].y - a.y,
+                  a.destination[0].x - a.x
+                );
+                if (
+                  a.getDistance(a.destination[0].x, a.destination[0].y) > 30
+                ) {
+                  a.x += Math.cos(a.direction) * a.speed;
+                  a.y += Math.sin(a.direction) * a.speed;
+                } else {
+                  a.destination.splice(0, 1);
+                }
+              }
+            } else {
+              if (a.animationTime > 0) {
+                a.x += Math.cos(a.direction) * 3;
+                a.y += Math.sin(a.direction) * 3;
+                if (a.animationTime >= 5) {
+                  a.animationTime = -1;
+                }
+                a.animationTime++;
+              } else {
+                a.x -= Math.cos(a.direction) * 3;
+                a.y -= Math.sin(a.direction) * 3;
+                if (a.animationTime <= -5) {
+                  a.target.power -=
+                    (Math.ceil(a.power / 10) + (a.power % 10)) *
+                    (Math.abs(a.target.direction - a.direction) < Math.PI / 2 ||
+                    a.target.type == "A"
+                      ? 2
+                      : 0.5);
+                  updateArmyPowerBars();
+                  if (a.type != "C") {
+                    a.target.calveryStun = 3;
+                  }
+                }
+                a.animationTime--;
+              }
+            }
+          } else {
+            a.calveryStun -= 1;
+          }
+          for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+              const posArray =
+                gridArmies[
+                  Math.floor(a.x / 30) + i + "/" + (Math.floor(a.y / 30) + j)
+                ];
+
+              if (posArray == undefined) {
+                continue;
+              }
+              for (const a2 of posArray) {
+                let amount = 0;
+                while (a.getDistance(a2.x, a2.y) < 25 && amount < 100) {
+                  const direction = Math.atan2(a2.y - a.y, a2.x - a.x);
+                  a.x -= Math.cos(direction) * 0.2;
+                  a.y -= Math.sin(direction) * 0.2;
+                  a2.x += Math.cos(direction) * 0.2;
+                  a2.y += Math.sin(direction) * 0.2;
+                  amount++;
+                }
+              }
+            }
+          }
+        }
+        for (const a of blueArmies) {
+          if (a.type != "C" || a.calveryStun == 0) {
+            if (a.animationTime == -6) {
+              let min = Infinity;
+              let leastCoord;
+              let arrowTarget = null;
+
+              for (const a2 of redArmies) {
+                if (a2.side == "blue") {
+                  continue;
+                }
+                const nearestDistance = a.getDistance(a2.x, a2.y);
+                if (nearestDistance < min) {
+                  min = nearestDistance;
+                  leastCoord = { x: a2.x, y: a2.y };
+                  arrowTarget = a2;
+                  if (a.getDistance(a2.x, a2.y) < 30 && a.priority != 1) {
+                    a.destination.length = 0;
+                    a.animationTime = 1;
+                    a.target = a2;
+                    break;
+                  }
+                }
+              }
+
+              if (min > 180 && a.priority == 1) {
+                a.priority = 3;
+              }
+              if (min < 180) {
+                if (a.priority != 1) {
+                  a.priority = 2;
+                  a.destination.length = 0;
+                  a.destination.push(leastCoord);
+                }
+              } else if (a.type == "A" && min < 500 && a.arrowCoolDown <= 0) {
+                arrows.push(
+                  new arrow(
+                    a.x,
+                    a.y,
+                    Math.atan2(leastCoord.y - a.y, leastCoord.x - a.x),
+                    Math.ceil(a.power / 10) + (a.power % 10),
+                    leastCoord,
+                    "blue"
+                  )
+                );
+                a.arrowCoolDown = 15 + Math.random() * 5;
+              } else if (a.arrowCoolDown > 0) {
+                a.arrowCoolDown--;
+              }
+
+              if (a.destination.length > 0) {
+                a.direction = Math.atan2(
+                  a.destination[0].y - a.y,
+                  a.destination[0].x - a.x
+                );
+
+                if (
+                  a.getDistance(a.destination[0].x, a.destination[0].y) >
+                  a.speed
+                ) {
+                  a.x += Math.cos(a.direction) * a.speed;
+                  a.y += Math.sin(a.direction) * a.speed;
+                } else {
+                  a.x = a.destination[0].x;
+                  a.y = a.destination[0].y;
+                  a.direction = a.targetRotation;
+                  a.priority = 3;
+                  a.destination.splice(0, 1);
+                }
+              }
+            } else {
+              if (a.animationTime > 0) {
+                a.x += Math.cos(a.direction) * 3;
+                a.y += Math.sin(a.direction) * 3;
+                if (a.animationTime >= 5) {
+                  a.animationTime = -1;
+                }
+                a.animationTime++;
+              } else {
+                a.x -= Math.cos(a.direction) * 3;
+                a.y -= Math.sin(a.direction) * 3;
+                if (a.animationTime <= -5) {
+                  a.target.power -=
+                    (Math.ceil(a.power / 10) + (a.power % 10)) *
+                    (Math.abs(a.target.direction - a.direction) < Math.PI / 2 ||
+                    a.target.type == "A"
+                      ? 2
+                      : 0.5);
+                  updateArmyPowerBars();
+                  if (a.type != "C") {
+                    a.target.calveryStun = 3;
+                  }
+                }
+                a.animationTime--;
+              }
+            }
+          } else {
+            a.calveryStun -= 1;
+          }
+          for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+              const posArray =
+                gridArmies[
+                  Math.floor(a.x / 30) + i + "/" + (Math.floor(a.y / 30) + j)
+                ];
+              if (posArray == undefined) {
+                continue;
+              }
+              for (const a2 of posArray) {
+                let amount = 0;
+                while (a.getDistance(a2.x, a2.y) < 25 && amount < 100) {
+                  const direction = Math.atan2(a2.y - a.y, a2.x - a.x);
+                  a.x -= Math.cos(direction) * 0.2;
+                  a.y -= Math.sin(direction) * 0.2;
+                  a2.x += Math.cos(direction) * 0.2;
+                  a2.y += Math.sin(direction) * 0.3;
+                  amount++;
+                }
+              }
+            }
+          }
+        }
+
+        render();
+      }
+      setTimeout(mainFunction, 50);
+    }
+    mainFunction();
+    //const main = window.setInterval(mainFunction, 60);
+    function render() {
+      ctx.fillStyle = "green";
+      ctx.fillRect(0, 0, screen.width, screen.height);
+
+      for (let i = redArmies.length - 1; i >= 0; i--) {
+        if (redArmies[i].power <= 0) {
+          redArmies.splice(i, 1);
+          continue;
+        }
+        switch (redArmies[i].type) {
+          case "I":
+            drawDirectionalRectangle(
+              (redArmies[i].x - armyScrollX) * zoom,
+              (redArmies[i].y - armyScrollY) * zoom,
+              (redArmies[i].direction * 180) / Math.PI,
+              "red",
+              10 * zoom
+            );
+            break;
+          case "C":
+            drawDirectionalTriangle(
+              (redArmies[i].x - armyScrollX) * zoom,
+              (redArmies[i].y - armyScrollY) * zoom,
+              (redArmies[i].direction * 180) / Math.PI,
+              "red",
+              10 * zoom
+            );
+            break;
+          case "A":
+            ctx.lineWidth = 5 * zoom;
+
+            ctx.beginPath();
+            ctx.fillStyle = "red";
+            ctx.strokeStyle = "black";
+            ctx.arc(
+              (redArmies[i].x - armyScrollX) * zoom,
+              (redArmies[i].y - armyScrollY) * zoom,
+              8 * zoom,
+              0,
+              Math.PI * 2
+            );
+            ctx.stroke();
+            ctx.fill();
+            break;
+        }
+      }
+
+      ctx.fillStyle = "blue";
+      for (let i = blueArmies.length - 1; i >= 0; i--) {
+        if (blueArmies[i].power <= 0) {
+          blueArmies.splice(i, 1);
+          continue;
+        }
+        switch (blueArmies[i].type) {
+          case "I":
+            drawDirectionalRectangle(
+              (blueArmies[i].x - armyScrollX) * zoom,
+              (blueArmies[i].y - armyScrollY) * zoom,
+              (blueArmies[i].direction * 180) / Math.PI,
+              "blue",
+              10 * zoom,
+              blueArmies[i].selected ? "white" : "black"
+            );
+            break;
+          case "C":
+            drawDirectionalTriangle(
+              (blueArmies[i].x - armyScrollX) * zoom,
+              (blueArmies[i].y - armyScrollY) * zoom,
+              (blueArmies[i].direction * 180) / Math.PI,
+              "blue",
+              10 * zoom,
+              blueArmies[i].selected ? "white" : "black"
+            );
+            break;
+          case "A":
+            ctx.lineWidth = 5 * zoom;
+            ctx.beginPath();
+            if (blueArmies[i].selected) {
+              ctx.strokeStyle = "white";
+            } else {
+              ctx.strokeStyle = "black";
+            }
+            ctx.arc(
+              (blueArmies[i].x - armyScrollX) * zoom,
+              (blueArmies[i].y - armyScrollY) * zoom,
+              8 * zoom,
+              0,
+              Math.PI * 2
+            );
+            ctx.stroke();
+            ctx.fill();
+            break;
+        }
+      }
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "black";
+      for (const arrow of arrows) {
+        const direction = Math.atan2(
+          arrow.landingSpot.y - arrow.y,
+          arrow.landingSpot.x - arrow.x
+        );
+        ctx.beginPath();
+        ctx.moveTo(
+          (arrow.x - armyScrollX - Math.cos(direction) * 20) * zoom,
+          (arrow.y - Math.sin(direction) * 20 - armyScrollY) * zoom
+        );
+        ctx.lineTo(
+          (arrow.x - armyScrollX) * zoom,
+          (arrow.y - armyScrollY) * zoom
+        );
+        ctx.stroke();
+      }
+    }
+  </script>
